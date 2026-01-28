@@ -44,12 +44,24 @@ class FileServer(SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
+
             files = os.listdir(UPLOAD_DIR)
-            self.wfile.write(json.dumps(files).encode())
+            file_list = []
+            for f in files:
+                try:
+                    decoded_f = unquote(f)
+                except:
+                    decoded_f = f
+                file_list.append({
+                    'encoded_name': f,
+                    'name': decoded_f
+                })
+
+            self.wfile.write(json.dumps(file_list).encode())
             return
 
         elif self.path.startswith('/details/'):
-            filename = unquote(self.path[len('/details/'):])
+            filename = unquote(self.headers.get('Filename', 'uploaded_file'))
             filepath = os.path.join(UPLOAD_DIR, filename)
 
             if os.path.exists(filepath):

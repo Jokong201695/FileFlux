@@ -112,8 +112,11 @@
             <input type="file" id="fileInput">
             <button onclick="upload()">Upload</button>
             <div id="message"></div>
+            <!-- 进度条 -->
+            <div id="progress-container" style="display: none; width: 100%; background-color: #ddd; border-radius: 4px; margin-top: 1rem;">
+                <div id="progress-bar" style="width: 0%; height: 10px; background-color: #0078d4; border-radius: 4px;"></div>
+            </div>
         </div>
-
         <!-- 文件列表 -->
         <div id="file-list">
             <h2>Download Files</h2>
@@ -137,50 +140,77 @@
 
     <script>
     function upload() {
-        const file = document.getElementById('fileInput').files[0];
-        if (!file) return alert("请选择一个文件");
+    const file = document.getElementById('fileInput').files[0];
+    if (!file) return alert("请选择一个文件");
 
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const xhr = new XMLHttpRequest();
-            xhr.open("POST", "/");
-            xhr.setRequestHeader("Filename", file.name);
-            xhr.send(e.target.result);
-            xhr.onload = () => {
-                document.getElementById('message').textContent = "✅ 上传成功";
-                refreshFiles();
-            };
-        };
-        reader.readAsArrayBuffer(file);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/");
+    
+    // ✅ 使用 encodeURIComponent 对文件名进行编码
+    xhr.setRequestHeader("Filename", encodeURIComponent(file.name));
+
+    const progressContainer = document.getElementById('progress-container');
+    const progressBar = document.getElementById('progress-bar');
+    progressContainer.style.display = 'block';
+    progressBar.style.width = '0%';
+
+    xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+            const percentComplete = Math.round((e.loaded / e.total) * 100);
+            progressBar.style.width = percentComplete + '%';
+        }
+    };
+
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            document.getElementById('message').textContent = "✅ 上传成功";
+            refreshFiles();
+        } else {
+            document.getElementById('message').textContent = "❌ 上传失败";
+        }
+        progressContainer.style.display = 'none';
+    };
+
+    xhr.onerror = function() {
+        document.getElementById('message').textContent = "❌ 上传出错";
+        progressContainer.style.display = 'none';
+    };
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        xhr.send(e.target.result);
+    };
+    reader.readAsArrayBuffer(file);
     }
 
     function refreshFiles() {
-        fetch("/list")
-            .then(res => res.json())
-            .then(files => {
-                const ul = document.getElementById("files");
-                ul.innerHTML = "";
-                files.forEach(file => {
-                    const li = document.createElement("li");
-                    const link = document.createElement("a");
-                    link.href = "/" + encodeURIComponent(file);
-                    link.textContent = file;
-                    link.onclick = (e) => {
-                        e.preventDefault();
-                        showFileDetails(file);
-                    };
-                    li.appendChild(link);
+    fetch("/list")
+        .then(res => res.json())
+        .then(files => {
+            const ul = document.getElementById("files");
+            ul.innerHTML = "";
+            files.forEach(file => {
+                const li = document.createElement("li");
 
-                    // 添加删除按钮
-                    const deleteBtn = document.createElement("button");
-                    deleteBtn.textContent = "Delete";
-                    deleteBtn.style.marginLeft = "10px";
-                    deleteBtn.onclick = () => deleteFile(file);
-                    li.appendChild(deleteBtn);
+                const link = document.createElement("a");
+                link.href = "/" + encodeURIComponent(file.encoded_name);
+                link.textContent = file.name || file.encoded_name;  // fallback
+                link.onclick = (e) => {
+                    e.preventDefault();
+                    showFileDetails(file.encoded_name);
+                };
+                li.appendChild(link);
 
-                    ul.appendChild(li);
-                });
+                // 删除按钮
+                const deleteBtn = document.createElement("button");
+                deleteBtn.textContent = "Delete";
+                deleteBtn.style.marginLeft = "10px";
+                deleteBtn.onclick = () => deleteFile(file.encoded_name);
+                li.appendChild(deleteBtn);
+
+                ul.appendChild(li);
             });
+        });
     }
 
     function deleteFile(filename) {
