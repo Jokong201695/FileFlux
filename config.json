@@ -1,4 +1,4 @@
 {
     "port": 8000,
-    "root_dir": "."
+    "upload_dir": "uploads"
 }

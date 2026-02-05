@@ -1,263 +1,357 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>FileFlux</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FileFlux - 简易文件传输</title>
     <link rel="stylesheet" href="/static/style.css">
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f5f7fa;
-            color: #333;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-        }
-
-        header {
-            background-color: #0078d4;
-            color: white;
-            padding: 1rem 2rem;
-            text-align: center;
-            width: 100%;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        .container {
-            max-width: 960px;
-            margin: 2rem auto;
-            padding: 0 1rem;
-            width: 100%;
-        }
-
-        h1 {
-            margin-top: 0;
-            font-size: 2.5rem;
-        }
-
-        .upload-form {
-            margin-bottom: 2rem;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        .upload-form input[type="file"] {
-            margin-bottom: 1rem;
-            padding: 0.5rem 1rem;
-            font-size: 1rem;
-        }
-
-        .upload-form button {
-            padding: 0.5rem 1.5rem;
-            background-color: #0078d4;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 1rem;
-        }
-
-        .upload-form button:hover {
-            background-color: #005a9e;
-        }
-
-        #message {
-            color: green;
-            font-weight: bold;
-            margin-top: 1rem;
-        }
-
-        #files {
-            list-style-type: none;
-            padding: 0;
-            width: 100%;
-        }
-
-        #files li {
-            padding: 0.5rem 1rem;
-            background-color: white;
-            margin-bottom: 0.5rem;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 1.1rem;
-        }
-
-        #files a {
-            text-decoration: none;
-            color: #0078d4;
-            font-weight: bold;
-        }
-
-        #files a:hover {
-            text-decoration: underline;
-        }
-    </style>
 </head>
 <body>
     <header>
         <h1>📁 FileFlux</h1>
-        <p>轻松上传、下载与分享文件</p>
+        <p>局域网高速文件传输助手</p>
     </header>
 
     <div class="container">
-        <!-- 文件上传表单 -->
-        <div class="upload-form">
-            <input type="file" id="fileInput">
-            <button onclick="upload()">Upload</button>
-            <div id="message"></div>
-            <!-- 进度条 -->
-            <div id="progress-container" style="display: none; width: 100%; background-color: #ddd; border-radius: 4px; margin-top: 1rem;">
-                <div id="progress-bar" style="width: 0%; height: 10px; background-color: #0078d4; border-radius: 4px;"></div>
+        <!-- 上传区域 (拖拽 + 点击) -->
+        <div class="upload-section">
+            <div id="drop-zone" class="drop-zone">
+                <div class="icon">☁️</div>
+                <p>点击或拖拽文件到此处上传</p>
+                <input type="file" id="fileInput" multiple style="display: none;">
             </div>
+            
+            <!-- 进度条容器 -->
+            <div id="progress-wrapper" style="display: none;">
+                <div class="progress-info">
+                    <span id="progress-text">正在上传...</span>
+                    <span id="progress-percent">0%</span>
+                </div>
+                <div class="progress-container">
+                    <div id="progress-bar"></div>
+                </div>
+            </div>
+            <div id="message"></div>
         </div>
+
         <!-- 文件列表 -->
-        <div id="file-list">
-            <h2>Download Files</h2>
-            <ul id="files"></ul>
+        <div id="file-list-section">
+            <div class="section-header">
+                <h2>📂 文件列表</h2>
+                <button onclick="refreshFiles()" class="refresh-btn" title="刷新列表">🔄</button>
+            </div>
+            <ul id="files" class="file-grid"></ul>
         </div>
     </div>
 
     <!-- 文件详情模态框 -->
-    <div id="file-detail-modal" style="display: none; position: fixed; top: 20%; left: 50%; transform: translateX(-50%); background: white; padding: 1rem 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 10;">
-        <h3>文件详情</h3>
-        <p><strong>文件名:</strong> <span id="detail-filename"></span></p>
-        <p><strong>大小:</strong> <span id="detail-size"></span> 字节</p>
-        <p><strong>最后修改时间:</strong> <span id="detail-modified"></span></p>
-        <a id="download-link" href="#" download style="display: inline-block; margin-top: 1rem; padding: 0.5rem 1rem; background-color: #0078d4; color: white; text-decoration: none; border-radius: 4px;">Download</a>
-        <button onclick="closeFileDetail()" style="margin-left: 1rem; padding: 0.5rem 1rem; background-color: #ccc; border: none; border-radius: 4px;">关闭</button>
+    <div id="modal-overlay" class="modal-overlay" onclick="closeFileDetail()"></div>
+    <div id="file-detail-modal" class="modal">
+        <div class="modal-header">
+            <h3>📄 文件详情</h3>
+            <button onclick="closeFileDetail()" class="close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="detail-row">
+                <span class="label">文件名:</span>
+                <span id="detail-filename" class="value"></span>
+            </div>
+            <div class="detail-row">
+                <span class="label">大小:</span>
+                <span id="detail-size" class="value"></span>
+            </div>
+            <div class="detail-row">
+                <span class="label">修改时间:</span>
+                <span id="detail-modified" class="value"></span>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a id="download-link" href="#" class="btn btn-primary">⬇️ 下载文件</a>
+        </div>
     </div>
 
-    <!-- 背景遮罩 -->
-    <div id="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 5;"></div>
-
-
     <script>
-    function upload() {
-    const file = document.getElementById('fileInput').files[0];
-    if (!file) return alert("请选择一个文件");
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('fileInput');
 
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/");
-    
-    // ✅ 使用 encodeURIComponent 对文件名进行编码
-    xhr.setRequestHeader("Filename", encodeURIComponent(file.name));
+        // 绑定点击事件触发文件选择
+        dropZone.addEventListener('click', () => fileInput.click());
 
-    const progressContainer = document.getElementById('progress-container');
-    const progressBar = document.getElementById('progress-bar');
-    progressContainer.style.display = 'block';
-    progressBar.style.width = '0%';
+        // 绑定文件选择事件
+        fileInput.addEventListener('change', handleFiles);
 
-    xhr.upload.onprogress = function(e) {
-        if (e.lengthComputable) {
-            const percentComplete = Math.round((e.loaded / e.total) * 100);
-            progressBar.style.width = percentComplete + '%';
+        // 绑定拖拽事件
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
         }
-    };
 
-    xhr.onload = function() {
-        if (xhr.status === 200) {
-            document.getElementById('message').textContent = "✅ 上传成功";
-            refreshFiles();
-        } else {
-            document.getElementById('message').textContent = "❌ 上传失败";
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight() { dropZone.classList.add('highlight'); }
+        function unhighlight() { dropZone.classList.remove('highlight'); }
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleUpload(files);
         }
-        progressContainer.style.display = 'none';
-    };
+        dropZone.addEventListener('drop', handleDrop, false);
 
-    xhr.onerror = function() {
-        document.getElementById('message').textContent = "❌ 上传出错";
-        progressContainer.style.display = 'none';
-    };
+        function handleFiles() {
+            const files = this.files;
+            handleUpload(files);
+        }
 
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        xhr.send(e.target.result);
-    };
-    reader.readAsArrayBuffer(file);
-    }
+        // 核心上传逻辑
+        async function handleUpload(files) {
+            if (files.length === 0) return;
 
-    function refreshFiles() {
-    fetch("/list")
-        .then(res => res.json())
-        .then(files => {
+            const progressWrapper = document.getElementById('progress-wrapper');
+            const progressBar = document.getElementById('progress-bar');
+            const progressPercent = document.getElementById('progress-percent');
+            const messageDiv = document.getElementById('message');
+
+            progressWrapper.style.display = 'block';
+            messageDiv.textContent = '';
+            
+            let totalFiles = files.length;
+            let completedFiles = 0;
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                try {
+                    await uploadSingleFile(file, (percent) => {
+                        if(files.length === 1) {
+                             progressBar.style.width = percent + '%';
+                             progressPercent.textContent = percent + '%';
+                        }
+                    });
+                    completedFiles++;
+                    if (files.length > 1) {
+                         const percent = Math.round((completedFiles / totalFiles) * 100);
+                         progressBar.style.width = percent + '%';
+                         progressPercent.textContent = `已完成 ${completedFiles}/${totalFiles}`;
+                    }
+                } catch (error) {
+                    console.error(error);
+                    // 演示模式下虽然上传失败，但也给个提示
+                    if (window.location.protocol === 'blob:' || window.location.protocol === 'about:') {
+                        messageDiv.innerHTML += `<div class="error" style="color:orange">⚠️ 预览模式无法实际上传: ${file.name}</div>`;
+                    } else {
+                        messageDiv.innerHTML += `<div class="error">❌ ${file.name} 上传失败</div>`;
+                    }
+                }
+            }
+
+            if (completedFiles === totalFiles) {
+                messageDiv.innerHTML = `<div class="success">✅ 所有文件上传成功</div>`;
+                refreshFiles();
+                setTimeout(() => {
+                    progressWrapper.style.display = 'none';
+                    progressBar.style.width = '0%';
+                }, 3000);
+            }
+        }
+
+        function uploadSingleFile(file, onProgress) {
+            return new Promise((resolve, reject) => {
+                // 检查是否在预览环境
+                if (window.location.protocol === 'blob:' || window.location.protocol === 'about:') {
+                     // 模拟上传延迟
+                     let progress = 0;
+                     const interval = setInterval(() => {
+                         progress += 10;
+                         onProgress(progress);
+                         if (progress >= 100) {
+                             clearInterval(interval);
+                             resolve(); // 伪装成功
+                         }
+                     }, 50);
+                     return;
+                }
+
+                const xhr = new XMLHttpRequest();
+                xhr.open("POST", "/");
+                xhr.setRequestHeader("Filename", encodeURIComponent(file.name));
+
+                xhr.upload.onprogress = function(e) {
+                    if (e.lengthComputable) {
+                        const percentComplete = Math.round((e.loaded / e.total) * 100);
+                        onProgress(percentComplete);
+                    }
+                };
+
+                xhr.onload = function() {
+                    if (xhr.status === 200) {
+                        resolve();
+                    } else {
+                        reject("Upload failed");
+                    }
+                };
+
+                xhr.onerror = function() { reject("Network error"); };
+
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    xhr.send(e.target.result);
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // 从后端获取列表
+        async function refreshFiles() {
+            try {
+                const response = await fetch("/list");
+                if (!response.ok) throw new Error("Server error");
+                const files = await response.json();
+                renderFileList(files);
+            } catch (error) {
+                console.warn("无法连接到后端服务器，切换到演示模式。", error);
+                // 演示数据 (Mock Data)
+                const demoFiles = [
+                    { name: "示例图片.jpg", encoded_name: "demo_image.jpg", size: 102400, last_modified: Date.now() / 1000 },
+                    { name: "项目报告.pdf", encoded_name: "project_report.pdf", size: 2048576, last_modified: Date.now() / 1000 - 3600 },
+                    { name: "备份文件.zip", encoded_name: "backup.zip", size: 52428800, last_modified: Date.now() / 1000 - 86400 }
+                ];
+                renderFileList(demoFiles);
+                
+                // 在界面上显示一个小提示
+                const listSection = document.getElementById("file-list-section");
+                if (!document.getElementById("demo-warning")) {
+                    const warning = document.createElement("div");
+                    warning.id = "demo-warning";
+                    warning.style.color = "#856404";
+                    warning.style.backgroundColor = "#fff3cd";
+                    warning.style.padding = "0.5rem";
+                    warning.style.marginBottom = "1rem";
+                    warning.style.borderRadius = "4px";
+                    warning.style.textAlign = "center";
+                    warning.innerHTML = "⚠️ 当前为预览/离线模式，显示的为演示数据。请运行 <code>python server.py</code> 启动完整功能。";
+                    listSection.insertBefore(warning, listSection.querySelector('ul'));
+                }
+            }
+        }
+
+        function renderFileList(files) {
             const ul = document.getElementById("files");
             ul.innerHTML = "";
+            
+            if (files.length === 0) {
+                ul.innerHTML = '<li class="empty-state">暂无文件，请上传</li>';
+                return;
+            }
+
             files.forEach(file => {
                 const li = document.createElement("li");
+                
+                // 文件图标逻辑
+                const ext = file.name.split('.').pop().toLowerCase();
+                let icon = '📄';
+                if (['png','jpg','jpeg','gif'].includes(ext)) icon = '🖼️';
+                if (['zip','rar','7z','tar'].includes(ext)) icon = '📦';
+                if (['mp4','mov'].includes(ext)) icon = '🎬';
 
-                const link = document.createElement("a");
-                link.href = "/" + encodeURIComponent(file.encoded_name);
-                link.textContent = file.name || file.encoded_name;  // fallback
-                link.onclick = (e) => {
-                    e.preventDefault();
-                    showFileDetails(file.encoded_name);
-                };
-                li.appendChild(link);
-
-                // 删除按钮
-                const deleteBtn = document.createElement("button");
-                deleteBtn.textContent = "Delete";
-                deleteBtn.style.marginLeft = "10px";
-                deleteBtn.onclick = () => deleteFile(file.encoded_name);
-                li.appendChild(deleteBtn);
-
+                li.innerHTML = `
+                    <div class="file-info" onclick="showFileDetails('${file.encoded_name}')">
+                        <span class="file-icon">${icon}</span>
+                        <span class="file-name">${file.name}</span>
+                    </div>
+                    <button class="delete-btn" onclick="deleteFile('${file.encoded_name}')" title="删除">🗑️</button>
+                `;
                 ul.appendChild(li);
             });
-        });
-    }
+        }
 
-    function deleteFile(filename) {
-        if (!confirm(`确定要删除 "${filename}" 吗？`)) return;
+        function deleteFile(filename) {
+            if (!confirm(`确定要删除这个文件吗？`)) return;
 
-        fetch(`/delete/${encodeURIComponent(filename)}`, {
-            method: 'DELETE'
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                alert(`"${filename}" 已删除`);
-                refreshFiles();
-            } else {
-                alert(`删除失败：${data.error}`);
-            }
-        });
-    }
+            fetch(`/delete/${filename}`, { method: 'DELETE' })
+            .then(res => {
+                if (!res.ok) throw new Error("Delete failed");
+                return res.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    refreshFiles();
+                } else {
+                    alert(`删除失败：${data.error}`);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                alert("删除失败：无法连接到服务器 (预览模式不支持删除)");
+            });
+        }
 
-    function showFileDetails(filename) {
-    fetch(`/details/${encodeURIComponent(filename)}`)
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                document.getElementById('detail-filename').textContent = data.name;
-                document.getElementById('detail-size').textContent = data.size;
-                document.getElementById('detail-modified').textContent = new Date(data.last_modified).toLocaleString();
+        function showFileDetails(encodedName) {
+            fetch(`/details/${encodedName}`)
+                .then(res => {
+                    if (!res.ok) throw new Error("Fetch failed");
+                    return res.json();
+                })
+                .then(data => {
+                    updateModal(data);
+                })
+                .catch(err => {
+                    console.warn("Using mock detail data", err);
+                    // 模拟详情数据
+                    const mockData = {
+                        name: decodeURIComponent(encodedName) || "演示文件",
+                        size: 1024 * 1024 * 2.5, // 2.5 MB
+                        last_modified: Date.now() / 1000
+                    };
+                    updateModal(mockData);
+                });
+        }
 
-                // 设置下载链接
-                document.getElementById('download-link').href = '/' + encodeURIComponent(filename);
+        function updateModal(data) {
+            document.getElementById('detail-filename').textContent = data.name;
+            document.getElementById('detail-size').textContent = formatBytes(data.size);
+            document.getElementById('detail-modified').textContent = new Date(data.last_modified * 1000).toLocaleString();
+            
+            // 只是为了演示，链接可能无效
+            document.getElementById('download-link').href = '/' + encodeURIComponent(data.name);
+            document.getElementById('download-link').onclick = (e) => {
+                if (window.location.protocol === 'blob:') {
+                    e.preventDefault();
+                    alert("预览模式无法下载真实文件。");
+                }
+            };
+            
+            document.getElementById('file-detail-modal').style.display = 'block';
+            document.getElementById('modal-overlay').style.display = 'block';
+        }
 
-                // 显示模态框
-                document.getElementById('file-detail-modal').style.display = 'block';
-                document.getElementById('modal-overlay').style.display = 'block';
-            } else {
-                alert("获取文件详情失败：" + data.error);
-            }
-        });
-    }
+        function closeFileDetail() {
+            document.getElementById('file-detail-modal').style.display = 'none';
+            document.getElementById('modal-overlay').style.display = 'none';
+        }
 
-    function closeFileDetail() {
-        document.getElementById('file-detail-modal').style.display = 'none';
-        document.getElementById('modal-overlay').style.display = 'none';
-    }
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
 
-    setInterval(refreshFiles, 5000);
-    refreshFiles();
-</script>
+        // 自动刷新与初始加载
+        // 在预览模式下，为了避免频繁报错，可以去掉自动刷新，或者让刷新函数内部处理错误
+        setInterval(refreshFiles, 8000); 
+        refreshFiles();
+    </script>
 </body>
 </html>

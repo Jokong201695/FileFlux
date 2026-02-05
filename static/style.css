@@ -1,226 +1,207 @@
-
-try:
-    import os
-    import json
-    from http.server import SimpleHTTPRequestHandler, HTTPServer
-    from urllib.parse import unquote
-    from io import BytesIO
-    import socket
-except ModuleNotFoundError as e:
-    print(f'Module not found: {e}. Please ensure all necessary packages are installed.')
-    exit(1)
-
-# Load configuration
-CONFIG_PATH = 'config.json'
-
-def load_config():
-    try:
-        if not os.path.exists(CONFIG_PATH):
-            # Create a default config file if not found
-            default_config = {'port': 8000, 'root_dir': 'static'}
-            with open(CONFIG_PATH, 'w') as f:
-                json.dump(default_config, f, indent=4)
-            print(f'Configuration file created at {CONFIG_PATH} with default settings.')
-        with open(CONFIG_PATH, 'r') as f:
-            return json.load(f)
-    except Exception as e:
-        print(f'Error loading configuration: {e}')
-        return {'port': 8000, 'root_dir': 'static'}
-
-config = load_config()
-PORT = config.get('port', 8000)
-ROOT_DIR = config.get('root_dir', 'static')
-
-# Ensure directory structure
-def setup_directories():/* static/style.css */
-* {
-    box-sizing: border-box;
-}
-
+/* Global Styles */
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     margin: 0;
     padding: 0;
-    background-color: #f5f7fa;
+    background-color: #f0f2f5;
     color: #333;
+    line-height: 1.6;
 }
 
 header {
-    background-color: #0078d4;
+    background: linear-gradient(135deg, #0061f2 0%, #00ba88 100%);
     color: white;
-    padding: 1rem 2rem;
+    padding: 2rem 1rem;
     text-align: center;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 }
+
+header h1 { margin: 0; font-size: 2rem; }
+header p { margin: 0.5rem 0 0; opacity: 0.9; font-weight: 300; }
 
 .container {
-    max-width: 960px;
-    margin: 2rem auto;
+    max-width: 800px;
+    margin: -30px auto 2rem;
     padding: 0 1rem;
+    position: relative;
+    z-index: 2;
 }
 
-h1 {
-    margin-top: 0;
+/* Upload Drop Zone */
+.upload-section {
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.08);
+    margin-bottom: 2rem;
 }
 
-#file-list ul {
-    list-style-type: none;
+.drop-zone {
+    border: 2px dashed #cbd5e0;
+    border-radius: 8px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background-color: #fafbfc;
+}
+
+.drop-zone:hover, .drop-zone.highlight {
+    border-color: #0061f2;
+    background-color: #ebf8ff;
+}
+
+.drop-zone .icon { font-size: 3rem; margin-bottom: 0.5rem; }
+.drop-zone p { color: #718096; margin: 0; }
+
+/* Progress Bar */
+#progress-wrapper { margin-top: 1.5rem; }
+.progress-info { display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 0.5rem; }
+.progress-container {
+    background-color: #edf2f7;
+    border-radius: 99px;
+    height: 10px;
+    overflow: hidden;
+}
+#progress-bar {
+    width: 0%;
+    height: 100%;
+    background-color: #00ba88;
+    transition: width 0.3s ease;
+}
+
+#message { margin-top: 1rem; text-align: center; }
+.success { color: #00ba88; font-weight: bold; }
+.error { color: #e53e3e; font-weight: bold; }
+
+/* File List */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 0 0.5rem;
+}
+
+.section-header h2 { font-size: 1.2rem; color: #4a5568; margin: 0; }
+.refresh-btn {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: transform 0.3s;
+}
+.refresh-btn:hover { transform: rotate(180deg); }
+
+.file-grid {
+    list-style: none;
     padding: 0;
+    margin: 0;
 }
 
-#file-list li {
-    padding: 0.5rem 1rem;
-    background-color: white;
-    margin-bottom: 0.5rem;
-    border-radius: 4px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+.file-grid li {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 0.8rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    transition: transform 0.2s;
+}
+
+.file-grid li:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+
+.file-info {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.file-icon { font-size: 1.5rem; margin-right: 1rem; }
+.file-name {
+    font-weight: 500;
+    color: #2d3748;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.delete-btn {
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    cursor: pointer;
+    opacity: 0.6;
+    padding: 0.5rem;
+    transition: opacity 0.2s;
+}
+.delete-btn:hover { opacity: 1; color: #e53e3e; }
+
+.empty-state { text-align: center; color: #a0aec0; padding: 2rem !important; display: block !important; }
+
+/* Modal */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 10;
+    backdrop-filter: blur(2px);
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    width: 90%;
+    max-width: 400px;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    z-index: 11;
+    overflow: hidden;
+}
+
+.modal-header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #edf2f7;
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
 
-#file-list a {
+.modal-header h3 { margin: 0; font-size: 1.1rem; }
+.close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; line-height: 1; }
+
+.modal-body { padding: 1.5rem; }
+
+.detail-row {
+    display: flex;
+    margin-bottom: 0.8rem;
+    font-size: 0.95rem;
+}
+.detail-row .label { width: 80px; color: #718096; font-weight: 500; }
+.detail-row .value { flex: 1; word-break: break-all; color: #2d3748; }
+
+.modal-footer {
+    padding: 1rem 1.5rem;
+    background-color: #f7fafc;
+    text-align: right;
+}
+
+.btn {
+    display: inline-block;
+    padding: 0.6rem 1.2rem;
+    border-radius: 6px;
     text-decoration: none;
-    color: #0078d4;
-    font-weight: bold;
+    font-weight: 500;
+    transition: background 0.2s;
 }
 
-#file-list a:hover {
-    text-decoration: underline;
-}
-
-.upload-form {
-    margin-bottom: 2rem;
-}
-
-.upload-form input[type="file"] {
-    margin-bottom: 1rem;
-}
-
-button {
-    padding: 0.5rem 1rem;
-    background-color: #0078d4;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-button:hover {
-    background-color: #005a9e;
-}
-
-footer {
-    text-align: center;
-    padding: 1rem;
-    color: #aaa;
-    font-size: 0.9rem;
-    margin-top: 3rem;
-}
-    try:
-        os.makedirs(ROOT_DIR, exist_ok=True)
-        os.makedirs('templates', exist_ok=True)
-        os.makedirs('static', exist_ok=True)
-        
-        # Create index.html in templates
-        index_html = '''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>File Server</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-    <h1>Welcome to the File Server</h1>
-    <div id="file-list">
-        <h2>Files:</h2>
-        <ul>
-            {file_list}
-        </ul>
-    </div>
-</body>
-</html>'''
-        
-        with open('templates/index.html', 'w') as f:
-            f.write(index_html)
-        
-        # Create style.css in static
-        style_css = '''body {
-    font-family: Arial, sans-serif;
-    margin: 20px;
-}
-h1 {
-    color: #333;
-}
-#file-list {
-    margin-top: 20px;
-}
-a {
-    text-decoration: none;
-    color: #0066cc;
-}
-a:hover {
-    text-decoration: underline;
-}
-ul {
-    list-style-type: none;
-    padding: 0;
-}
-li {
-    margin: 5px 0;
-}'''
-        
-        with open('static/style.css', 'w') as f:
-            f.write(style_css)
-
-        print('Directory structure and template files created successfully.')
-    except Exception as e:
-        print(f'Error creating directories or files: {e}')
-
-setup_directories()
-
-class FileServerHandler(SimpleHTTPRequestHandler):
-    def do_GET(self):
-        # Decode URL and set root directory
-        self.path = unquote(self.path)
-        if self.path == '/' or self.path == '/index.html':
-            self.path = 'templates/index.html'
-        
-        # Serve the file or directory listing
-        if os.path.isdir(self.path):
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            files = os.listdir(self.path)
-            file_list = ''.join(f'<li><a href="{file}">{file}</a></li>' for file in files)
-            response = open('templates/index.html').read().format(file_list=file_list)
-            self.wfile.write(response.encode('utf-8'))
-        else:
-            super().do_GET()
-
-    def do_POST(self):
-        # Handle file uploads
-        content_length = int(self.headers['Content-Length'])
-        field_data = self.rfile.read(content_length)
-        filename = self.headers.get('Filename', 'uploaded_file')
-        filepath = os.path.join(ROOT_DIR, filename)
-
-        with open(filepath, 'wb') as f:
-            f.write(field_data)
-        
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(f'File {filename} uploaded successfully.'.encode('utf-8'))
-
-def run_server():
-    try:
-        # Explicitly set the socket options to support IPv4 and IPv6
-        server_address = ('', PORT)
-        httpd = HTTPServer(server_address, FileServerHandler)
-        httpd.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        print(f'Serving HTTP on port {PORT}...')
-        httpd.serve_forever()
-    except OSError as e:
-        print(f'Error starting server: {e}')
-
-if __name__ == '__main__':
-    run_server()
+.btn-primary { background-color: #0061f2; color: white; }
+.btn-primary:hover { background-color: #0050c8; }
