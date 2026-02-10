@@ -33,9 +33,9 @@ class FileServer(SimpleHTTPRequestHandler):
         # Remove leading/trailing path separators just in case
         filename = filename.strip(os.path.sep)
         # Join path
-        target_path = os.path.join(UPLOAD_DIR, filename)
-        # Verify the final path is still inside UPLOAD_DIR
-        if not os.path.commonpath([UPLOAD_DIR, target_path]) == UPLOAD_DIR:
+        target_path = os.path.realpath(os.path.join(UPLOAD_DIR, filename))
+        # Verify the normalized final path is still inside UPLOAD_DIR
+        if os.path.commonpath([UPLOAD_DIR, target_path]) != UPLOAD_DIR:
             return None
         return target_path
 
@@ -152,6 +152,13 @@ class FileServer(SimpleHTTPRequestHandler):
                 self.send_error(404, "File not found")
 
     def do_DELETE(self):
+        if not self.path.startswith('/delete/'):
+            self.send_response(404)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"success": False, "error": "Invalid delete endpoint"}).encode())
+            return
+
         filename = unquote(self.path[len('/delete/'):])
         filepath = self.get_safe_path(filename)
 
