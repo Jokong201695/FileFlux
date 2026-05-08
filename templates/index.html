@@ -30,6 +30,7 @@
                 <div class="progress-container">
                     <div id="progress-bar"></div>
                 </div>
+                <div id="progress-detail" class="progress-detail"></div>
             </div>
             <div id="message"></div>
         </div>
@@ -120,94 +121,175 @@
             const progressWrapper = document.getElementById('progress-wrapper');
             const progressBar = document.getElementById('progress-bar');
             const progressPercent = document.getElementById('progress-percent');
+            const progressText = document.getElementById('progress-text');
+            const progressDetail = document.getElementById('progress-detail');
             const messageDiv = document.getElementById('message');
 
             progressWrapper.style.display = 'block';
+            progressDetail.textContent = '';
             messageDiv.textContent = '';
-            
+
             let totalFiles = files.length;
             let completedFiles = 0;
 
+            // 计算所有文件总大小
+            let totalBytesAll = 0;
+            for (let i = 0; i < files.length; i++) totalBytesAll += files[i].size;
+            let uploadedBytesAll = 0;
+
+            const startTime = Date.now();
+
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
+                progressText.textContent = totalFiles > 1
+                    ? `正在上传 (${completedFiles + 1}/${totalFiles}): ${file.name}`
+                    : `正在上传: ${file.name}`;
+
                 try {
-                    await uploadSingleFile(file, (percent) => {
-                        if(files.length === 1) {
-                             progressBar.style.width = percent + '%';
-                             progressPercent.textContent = percent + '%';
+                    await uploadSingleFile(file, totalBytesAll, uploadedBytesAll, startTime, (info) => {
+                        if (totalFiles === 1) {
+                            progressBar.style.width = info.percent + '%';
+                            progressPercent.textContent = info.percent + '%';
                         }
+                        progressDetail.textContent = info.detail;
                     });
+                    uploadedBytesAll += file.size;
                     completedFiles++;
-                    if (files.length > 1) {
-                         const percent = Math.round((completedFiles / totalFiles) * 100);
-                         progressBar.style.width = percent + '%';
-                         progressPercent.textContent = `已完成 ${completedFiles}/${totalFiles}`;
+                    if (totalFiles > 1) {
+                        const percent = Math.round((uploadedBytesAll / totalBytesAll) * 100);
+                        progressBar.style.width = percent + '%';
+                        progressPercent.textContent = percent + '%';
                     }
                 } catch (error) {
                     console.error(error);
-                    // 演示模式下虽然上传失败，但也给个提示
                     if (window.location.protocol === 'blob:' || window.location.protocol === 'about:') {
                         messageDiv.innerHTML += `<div class="error" style="color:orange">⚠️ 预览模式无法实际上传: ${file.name}</div>`;
                     } else {
-                        messageDiv.innerHTML += `<div class="error">❌ ${file.name} 上传失败</div>`;
+                        messageDiv.innerHTML += `<div class="error">❌ ${file.name} 上传失败: ${error}</div>`;
                     }
                 }
             }
 
             if (completedFiles === totalFiles) {
-                messageDiv.innerHTML = `<div class="success">✅ 所有文件上传成功</div>`;
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                messageDiv.innerHTML = `<div class="success">✅ 所有文件上传成功 (耗时 ${elapsed}s)</div>`;
                 refreshFiles();
                 setTimeout(() => {
                     progressWrapper.style.display = 'none';
                     progressBar.style.width = '0%';
-                }, 3000);
+                }, 5000);
             }
         }
 
-        function uploadSingleFile(file, onProgress) {
-            return new Promise((resolve, reject) => {
-                // 检查是否在预览环境
-                if (window.location.protocol === 'blob:' || window.location.protocol === 'about:') {
-                     // 模拟上传延迟
-                     let progress = 0;
-                     const interval = setInterval(() => {
-                         progress += 10;
-                         onProgress(progress);
-                         if (progress >= 100) {
-                             clearInterval(interval);
-                             resolve(); // 伪装成功
-                         }
-                     }, 50);
-                     return;
+        function formatSpeed(bytesPerSec) {
+            if (bytesPerSec < 1024) return bytesPerSec.toFixed(0) + ' B/s';
+            if (bytesPerSec < 1024 * 1024) return (bytesPerSec / 1024).toFixed(1) + ' KB/s';
+            if (bytesPerSec < 1024 * 1024 * 1024) return (bytesPerSec / (1024 * 1024)).toFixed(1) + ' MB/s';
+            return (bytesPerSec / (1024 * 1024 * 1024)).toFixed(2) + ' GB/s';
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return (bytes / Math.pow(k, i)).toFixed(i > 1 ? 2 : 0) + ' ' + sizes[i];
+        }
+
+        function formatTime(seconds) {
+            if (seconds < 60) return Math.ceil(seconds) + '秒';
+            if (seconds < 3600) return Math.floor(seconds / 60) + '分' + Math.ceil(seconds % 60) + '秒';
+            return Math.floor(seconds / 3600) + '时' + Math.floor((seconds % 3600) / 60) + '分';
+        }
+
+        // 分片上传单个文件：每次只读一个 slice 到内存，用 XHR 发送，避免内存溢出
+        function uploadSingleFile(file, totalBytesAll, uploadedBytesOffset, globalStartTime, onProgress) {
+            // 预览模式模拟
+            if (window.location.protocol === 'blob:' || window.location.protocol === 'about:') {
+                return new Promise((resolve) => {
+                    let progress = 0;
+                    const interval = setInterval(() => {
+                        progress += 10;
+                        onProgress({ percent: progress, detail: `预览模式模拟中... ${progress}%` });
+                        if (progress >= 100) { clearInterval(interval); resolve(); }
+                    }, 50);
+                });
+            }
+
+            const SLICE_SIZE = 50 * 1024 * 1024; // 50MB per chunk
+            const fileSize = file.size;
+            const totalChunks = Math.ceil(fileSize / SLICE_SIZE);
+            const fileId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+            let uploadedBytes = 0;
+
+            function uploadChunk(chunkIndex) {
+                return new Promise((resolve, reject) => {
+                    const start = chunkIndex * SLICE_SIZE;
+                    const end = Math.min(start + SLICE_SIZE, fileSize);
+                    const slice = file.slice(start, end);
+
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const xhr = new XMLHttpRequest();
+                        xhr.open('POST', '/upload_chunk');
+
+                        xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
+                        xhr.setRequestHeader('X-File-Id', fileId);
+                        xhr.setRequestHeader('X-Chunk-Index', chunkIndex.toString());
+                        xhr.setRequestHeader('X-Total-Chunks', totalChunks.toString());
+
+                        xhr.upload.onprogress = function(ev) {
+                            if (ev.lengthComputable) {
+                                const chunkPercent = Math.round((ev.loaded / ev.total) * 100);
+                                const currentTotal = uploadedBytes + ev.loaded;
+                                const percent = Math.min(Math.round((currentTotal / fileSize) * 100), 100);
+                                const elapsed = (Date.now() - globalStartTime) / 1000;
+                                const totalUploaded = uploadedBytesOffset + currentTotal;
+                                const speed = elapsed > 0 ? totalUploaded / elapsed : 0;
+                                const remaining = speed > 0 ? (totalBytesAll - totalUploaded) / speed : 0;
+
+                                let detail = `${formatBytes(currentTotal)} / ${formatBytes(fileSize)}`;
+                                if (totalChunks > 1) detail += `  |  分片 ${chunkIndex + 1}/${totalChunks}`;
+                                if (speed > 0) {
+                                    detail += `  |  ${formatSpeed(speed)}`;
+                                    if (remaining > 0 && percent < 100) detail += `  |  剩余 ${formatTime(remaining)}`;
+                                }
+                                onProgress({ percent, detail });
+                            }
+                        };
+
+                        xhr.onload = function() {
+                            if (xhr.status === 200) {
+                                uploadedBytes += (end - start);
+                                resolve();
+                            } else {
+                                reject(new Error(`Chunk ${chunkIndex + 1} failed: HTTP ${xhr.status}`));
+                            }
+                        };
+
+                        xhr.onerror = function() {
+                            reject(new Error(`Chunk ${chunkIndex + 1} network error`));
+                        };
+
+                        xhr.send(e.target.result);
+                    };
+
+                    reader.onerror = function() {
+                        reject(new Error(`Failed to read chunk ${chunkIndex + 1}`));
+                    };
+
+                    reader.readAsArrayBuffer(slice);
+                });
+            }
+
+            // 顺序上传每个分片
+            async function uploadAllChunks() {
+                for (let i = 0; i < totalChunks; i++) {
+                    await uploadChunk(i);
                 }
+            }
 
-                const xhr = new XMLHttpRequest();
-                xhr.open("POST", "/");
-                xhr.setRequestHeader("Filename", encodeURIComponent(file.name));
-
-                xhr.upload.onprogress = function(e) {
-                    if (e.lengthComputable) {
-                        const percentComplete = Math.round((e.loaded / e.total) * 100);
-                        onProgress(percentComplete);
-                    }
-                };
-
-                xhr.onload = function() {
-                    if (xhr.status === 200) {
-                        resolve();
-                    } else {
-                        reject("Upload failed");
-                    }
-                };
-
-                xhr.onerror = function() { reject("Network error"); };
-
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    xhr.send(e.target.result);
-                };
-                reader.readAsArrayBuffer(file);
-            });
+            return uploadAllChunks();
         }
 
         // 从后端获取列表
@@ -337,15 +419,6 @@
         function closeFileDetail() {
             document.getElementById('file-detail-modal').style.display = 'none';
             document.getElementById('modal-overlay').style.display = 'none';
-        }
-
-        function formatBytes(bytes, decimals = 2) {
-            if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const dm = decimals < 0 ? 0 : decimals;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
         }
 
         // 自动刷新与初始加载

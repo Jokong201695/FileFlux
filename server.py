@@ -171,17 +171,17 @@ class FileServer(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({"success": False, "error": "File not found"}).encode())
 
     def do_POST(self):
-        try:
-            content_length = int(self.headers['Content-Length'])
-        except (TypeError, ValueError):
-            self.send_error(400, "Missing Content-Length")
+        # Chunked upload endpoint: /upload_chunk
+        if self.path == '/upload_chunk':
+            self._handle_chunk_upload()
             return
 
+        # Legacy single-request upload
         filename = self.headers.get('Filename')
         if not filename:
-             self.send_error(400, "Missing Filename header")
-             return
-        
+            self.send_error(400, "Missing Filename header")
+            return
+
         filename = unquote(filename)
         filepath = self.get_safe_path(filename)
 
@@ -189,24 +189,68 @@ class FileServer(SimpleHTTPRequestHandler):
             self.send_error(403, "Invalid filename or path")
             return
 
+        content_length = int(self.headers.get('Content-Length', 0))
+
         try:
             with open(filepath, 'wb') as f:
                 remaining = content_length
-                chunk_size = 8192
+                chunk_size = 65536
                 while remaining > 0:
-                    chunk = self.rfile.read(min(remaining, chunk_size))
-                    if not chunk:
+                    data = self.rfile.read(min(chunk_size, remaining))
+                    if not data:
                         break
-                    f.write(chunk)
-                    remaining -= len(chunk)
+                    f.write(data)
+                    remaining -= len(data)
 
-            self.send_response(200)
-            self.send_header("Content-type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"success": True, "message": f'File {os.path.basename(filepath)} uploaded'}).encode())
+            self._send_json(200, {"success": True, "message": f'File {os.path.basename(filepath)} uploaded'})
         except Exception as e:
             print(f"Upload error: {e}")
             self.send_error(500, "Server error during upload")
+
+    def _handle_chunk_upload(self):
+        filename = unquote(self.headers.get('X-File-Name', ''))
+        file_id = self.headers.get('X-File-Id', '')
+        chunk_index = self.headers.get('X-Chunk-Index', '')
+        total_chunks = self.headers.get('X-Total-Chunks', '')
+        content_length = int(self.headers.get('Content-Length', 0))
+
+        if not filename or not file_id or chunk_index == '' or not total_chunks:
+            self.send_error(400, "Missing chunk headers")
+            return
+
+        filepath = self.get_safe_path(filename)
+        if not filepath:
+            self.send_error(403, "Invalid filename or path")
+            return
+
+        try:
+            mode = 'wb' if chunk_index == '0' else 'ab'
+            with open(filepath, mode) as f:
+                remaining = content_length
+                buf_size = 65536
+                while remaining > 0:
+                    data = self.rfile.read(min(buf_size, remaining))
+                    if not data:
+                        break
+                    f.write(data)
+                    remaining -= len(data)
+
+            self._send_json(200, {
+                "success": True,
+                "chunk_index": int(chunk_index),
+                "total_chunks": int(total_chunks)
+            })
+        except Exception as e:
+            print(f"Chunk upload error: {e}")
+            self.send_error(500, "Server error during chunk upload")
+
+    def _send_json(self, code, data):
+        body = json.dumps(data).encode()
+        self.send_response(code)
+        self.send_header("Content-type", "application/json")
+        self.send_header("Content-Length", len(body))
+        self.end_headers()
+        self.wfile.write(body)
 
 def run_server():
     server_address = ('', PORT)

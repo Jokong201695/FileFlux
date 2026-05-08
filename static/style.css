@@ -70,6 +70,14 @@ header p { margin: 0.5rem 0 0; opacity: 0.9; font-weight: 300; }
     transition: width 0.3s ease;
 }
 
+.progress-detail {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    color: #718096;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
 #message { margin-top: 1rem; text-align: center; }
 .success { color: #00ba88; font-weight: bold; }
 .error { color: #e53e3e; font-weight: bold; }
