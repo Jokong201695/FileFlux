@@ -143,12 +143,6 @@ python3 server.py
 本项目采用 MIT License，具体请参见 [LICENSE](LICENSE) 文件。
 
 
-### 💡赞助声明
-
-本项目由 [ZMTO](https://zmto.com/?affid=1513) 的「开源项目免费 VPS 计划」提供算力支持。  
-感谢 ZMTO 对开源社区的支持！
-
-
 ### ❤️ 开源协议
 
 欢迎使用、修改和传播这个脚本！如果你觉得它对你有帮助，记得来点个 Star ⭐ 哦～
